@@ -18,33 +18,6 @@ let departures = [
     status: 'On Time',
     terminal: 'E'
   },
-  {
-    flightNumber: 'LX 160',
-    destination: 'London Heathrow',
-    scheduledTime: '11:45',
-    estimatedTime: '11:50',
-    gate: 'B18',
-    status: 'Delayed',
-    terminal: 'A'
-  },
-  {
-    flightNumber: 'LX 180',
-    destination: 'Paris CDG',
-    scheduledTime: '12:30',
-    estimatedTime: '12:30',
-    gate: 'D45',
-    status: 'Boarding',
-    terminal: 'E'
-  },
-  {
-    flightNumber: 'LX 64',
-    destination: 'Tokyo Narita',
-    scheduledTime: '13:20',
-    estimatedTime: '13:20',
-    gate: 'E32',
-    status: 'On Time',
-    terminal: 'E'
-  }
 ];
 
 // GET endpoint - Frontend fetches this
