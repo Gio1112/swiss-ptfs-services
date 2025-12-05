@@ -27,6 +27,15 @@ let departures = [
     gate: 'B18',
     status: 'Delayed',
     terminal: 'A'
+  },
+  {
+    flightNumber: 'LX 180',
+    destination: 'Paris CDG',
+    scheduledTime: '12:30',
+    estimatedTime: '12:30',
+    gate: 'D45',
+    status: 'Boarding',
+    terminal: 'E'
   }
 ];
 
@@ -85,6 +94,8 @@ app.delete('/api/departures/:flightNumber', (req, res) => {
 app.post('/api/auth/discord', async (req, res) => {
   const { code, redirectUri } = req.body;
   
+  console.log('Auth request received:', { hasCode: !!code, redirectUri });
+  
   try {
     // Exchange code for access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
@@ -101,12 +112,19 @@ app.post('/api/auth/discord', async (req, res) => {
     
     const tokenData = await tokenResponse.json();
     
+    if (tokenData.error) {
+      console.error('Discord token error:', tokenData);
+      return res.status(400).json({ success: false, message: tokenData.error_description || 'Auth failed' });
+    }
+    
     // Get user info
     const userResponse = await fetch('https://discord.com/api/users/@me', {
       headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
     });
     
     const userData = await userResponse.json();
+    
+    console.log('User authenticated:', userData.username);
     
     // Store user
     users[userData.id] = {
@@ -119,6 +137,8 @@ app.post('/api/auth/discord', async (req, res) => {
     // Generate auth token
     const authToken = crypto.randomBytes(32).toString('hex');
     tokens[authToken] = userData.id;
+    
+    console.log('Token generated for user:', userData.username);
     
     res.json({
       success: true,
@@ -133,14 +153,23 @@ app.post('/api/auth/discord', async (req, res) => {
 
 // Middleware to verify auth token
 function verifyToken(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader) {
+    console.log('No authorization header');
+    return res.status(401).json({ success: false, message: 'No authorization header' });
+  }
+  
+  const token = authHeader.replace('Bearer ', '');
   const userId = tokens[token];
   
   if (!userId || !users[userId]) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    console.log('Invalid token or user not found');
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
   
   req.user = users[userId];
+  console.log('Token verified for user:', req.user.username);
   next();
 }
 
@@ -148,7 +177,9 @@ function verifyToken(req, res, next) {
 
 // POST - Create a booking
 app.post('/api/bookings', verifyToken, (req, res) => {
-  const { flightNumber, userId, userName } = req.body;
+  const { flightNumber } = req.body;
+  
+  console.log('Booking request:', { flightNumber, user: req.user.username });
   
   // Check if flight exists
   const flight = departures.find(f => f.flightNumber === flightNumber);
@@ -160,13 +191,15 @@ app.post('/api/bookings', verifyToken, (req, res) => {
   const booking = {
     bookingId: `SW${Date.now()}`,
     flightNumber,
-    userId,
-    userName,
+    userId: req.user.id,
+    userName: req.user.username,
     bookedAt: new Date().toISOString(),
     status: 'confirmed'
   };
   
   bookings.push(booking);
+  
+  console.log('Booking created:', booking.bookingId);
   
   res.json({ success: true, message: 'Booking created', booking });
 });
@@ -175,6 +208,7 @@ app.post('/api/bookings', verifyToken, (req, res) => {
 app.get('/api/bookings/:userId', verifyToken, (req, res) => {
   const userId = req.params.userId;
   const userBookings = bookings.filter(b => b.userId === userId);
+  console.log(`Fetching bookings for user ${userId}:`, userBookings.length);
   res.json(userBookings);
 });
 
@@ -202,8 +236,11 @@ app.delete('/api/bookings/:bookingId', verifyToken, (req, res) => {
 app.post('/api/bot/book', (req, res) => {
   const { flightNumber, discordId, username, botToken } = req.body;
   
+  console.log('Bot booking request:', { flightNumber, discordId, username });
+  
   // Simple bot authentication
   if (botToken !== process.env.BOT_SECRET_TOKEN) {
+    console.log('Invalid bot token');
     return res.status(401).json({ success: false, message: 'Invalid bot token' });
   }
   
@@ -223,13 +260,16 @@ app.post('/api/bot/book', (req, res) => {
   
   bookings.push(booking);
   
+  console.log('Bot booking created:', booking.bookingId);
+  
   res.json({ success: true, message: 'Booking created via bot', booking });
 });
 
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'Swiss PTFS API is running!',
+    message: 'Swiss Virtual Airline API is running!',
+    version: '1.0.0',
     endpoints: {
       'GET /api/departures': 'Get all departures',
       'POST /api/departures': 'Replace all departures',
@@ -247,8 +287,8 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`✈️  Swiss API running on port ${PORT}`);
-  console.log(`🔐 Make sure to set these environment variables:`);
-  console.log(`   - DISCORD_CLIENT_ID`);
-  console.log(`   - DISCORD_CLIENT_SECRET`);
-  console.log(`   - BOT_SECRET_TOKEN`);
+  console.log(`🔐 Required environment variables:`);
+  console.log(`   - DISCORD_CLIENT_ID: ${process.env.DISCORD_CLIENT_ID ? '✓' : '✗'}`);
+  console.log(`   - DISCORD_CLIENT_SECRET: ${process.env.DISCORD_CLIENT_SECRET ? '✓' : '✗'}`);
+  console.log(`   - BOT_SECRET_TOKEN: ${process.env.BOT_SECRET_TOKEN ? '✓' : '✗'}`);
 });
