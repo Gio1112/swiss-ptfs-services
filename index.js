@@ -1,8 +1,18 @@
+// Add at the top of index.js after your imports
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
+const { DateTime } = require('luxon'); // We'll add this package
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Helper function to convert time string to ISO timestamp for today
+function timeToISO(timeString, timezone = 'Europe/Zurich') {
+    const [hours, minutes] = timeString.split(':');
+    const now = DateTime.now().setZone(timezone);
+    const flightTime = now.set({ hour: parseInt(hours), minute: parseInt(minutes), second: 0 });
+    return flightTime.toISO();
+}
 
 // Middleware
 app.use(cors());
@@ -13,8 +23,8 @@ let departures = [
   {
     flightNumber: 'LX 8',
     destination: 'New York JFK',
-    scheduledTime: '10:15',
-    estimatedTime: '10:15',
+    scheduledTime: '2024-12-07T10:15:00+01:00',
+    estimatedTime: '2024-12-07T10:15:00+01:00',
     gate: 'A22',
     status: 'On Time',
     terminal: 'E'
@@ -22,8 +32,8 @@ let departures = [
   {
     flightNumber: 'LX 160',
     destination: 'London Heathrow',
-    scheduledTime: '11:45',
-    estimatedTime: '11:50',
+    scheduledTime: '2024-12-07T11:45:00+01:00',
+    estimatedTime: '2024-12-07T11:50:00+01:00',
     gate: 'B18',
     status: 'Delayed',
     terminal: 'A'
@@ -31,8 +41,8 @@ let departures = [
   {
     flightNumber: 'LX 180',
     destination: 'Paris CDG',
-    scheduledTime: '12:30',
-    estimatedTime: '12:30',
+    scheduledTime: '2024-12-07T12:30:00+01:00',
+    estimatedTime: '2024-12-07T12:30:00+01:00',
     gate: 'D45',
     status: 'Boarding',
     terminal: 'E'
@@ -58,8 +68,17 @@ app.post('/api/departures', (req, res) => {
 
 // POST - Add a single flight
 app.post('/api/departures/add', (req, res) => {
-  departures.push(req.body);
-  res.json({ success: true, message: 'Flight added', flight: req.body });
+  const flight = req.body;
+
+  if (flight.scheduledTime && !flight.scheduledTime.includes('T')) {
+    flight.scheduledTime = timeToISO(flight.scheduledTime);
+  }
+  if (flight.estimatedTime && !flight.estimatedTime.includes('T')) {
+    flight.estimatedTime = timeToISO(flight.estimatedTime);
+  }
+
+  departures.push(flight);
+  res.json({ success: true, message: 'Flight added', flight });
 });
 
 // PUT - Update a specific flight
@@ -97,7 +116,6 @@ app.post('/api/auth/discord', async (req, res) => {
   console.log('Auth request received:', { hasCode: !!code, redirectUri });
   
   try {
-    // Exchange code for access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -117,7 +135,6 @@ app.post('/api/auth/discord', async (req, res) => {
       return res.status(400).json({ success: false, message: tokenData.error_description || 'Auth failed' });
     }
     
-    // Get user info
     const userResponse = await fetch('https://discord.com/api/users/@me', {
       headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
     });
@@ -126,7 +143,6 @@ app.post('/api/auth/discord', async (req, res) => {
     
     console.log('User authenticated:', userData.username);
     
-    // Store user
     users[userData.id] = {
       id: userData.id,
       username: userData.username,
@@ -134,7 +150,6 @@ app.post('/api/auth/discord', async (req, res) => {
       avatar: userData.avatar
     };
     
-    // Generate auth token
     const authToken = crypto.randomBytes(32).toString('hex');
     tokens[authToken] = userData.id;
     
@@ -151,7 +166,6 @@ app.post('/api/auth/discord', async (req, res) => {
   }
 });
 
-// Middleware to verify auth token
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
   
@@ -175,19 +189,16 @@ function verifyToken(req, res, next) {
 
 // ==================== BOOKING ENDPOINTS ====================
 
-// POST - Create a booking
 app.post('/api/bookings', verifyToken, (req, res) => {
   const { flightNumber } = req.body;
   
   console.log('Booking request:', { flightNumber, user: req.user.username });
   
-  // Check if flight exists
   const flight = departures.find(f => f.flightNumber === flightNumber);
   if (!flight) {
     return res.status(404).json({ success: false, message: 'Flight not found' });
   }
   
-  // Create booking
   const booking = {
     bookingId: `SW${Date.now()}`,
     flightNumber,
@@ -204,7 +215,6 @@ app.post('/api/bookings', verifyToken, (req, res) => {
   res.json({ success: true, message: 'Booking created', booking });
 });
 
-// GET - Get user's bookings
 app.get('/api/bookings/:userId', verifyToken, (req, res) => {
   const userId = req.params.userId;
   const userBookings = bookings.filter(b => b.userId === userId);
@@ -212,12 +222,10 @@ app.get('/api/bookings/:userId', verifyToken, (req, res) => {
   res.json(userBookings);
 });
 
-// GET - Get all bookings (for Discord bot)
 app.get('/api/bookings', (req, res) => {
   res.json(bookings);
 });
 
-// DELETE - Cancel a booking
 app.delete('/api/bookings/:bookingId', verifyToken, (req, res) => {
   const bookingId = req.params.bookingId;
   const initialLength = bookings.length;
@@ -232,13 +240,11 @@ app.delete('/api/bookings/:bookingId', verifyToken, (req, res) => {
 
 // ==================== DISCORD BOT ENDPOINTS ====================
 
-// POST - Bot can create bookings on behalf of users
 app.post('/api/bot/book', (req, res) => {
   const { flightNumber, discordId, username, botToken } = req.body;
   
   console.log('Bot booking request:', { flightNumber, discordId, username });
   
-  // Simple bot authentication
   if (botToken !== process.env.BOT_SECRET_TOKEN) {
     console.log('Invalid bot token');
     return res.status(401).json({ success: false, message: 'Invalid bot token' });
@@ -265,7 +271,6 @@ app.post('/api/bot/book', (req, res) => {
   res.json({ success: true, message: 'Booking created via bot', booking });
 });
 
-// Root endpoint
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Swiss Virtual Airline API is running!',
