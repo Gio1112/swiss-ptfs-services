@@ -20,33 +20,7 @@ app.use(express.json());
 
 // In-memory storage
 let departures = [
-  {
-    flightNumber: 'LX 8',
-    destination: 'New York JFK',
-    scheduledTime: '2024-12-07T10:15:00+01:00',
-    estimatedTime: '2024-12-07T10:15:00+01:00',
-    gate: 'A22',
-    status: 'On Time',
-    terminal: 'E'
-  },
-  {
-    flightNumber: 'LX 160',
-    destination: 'London Heathrow',
-    scheduledTime: '2024-12-07T11:45:00+01:00',
-    estimatedTime: '2024-12-07T11:50:00+01:00',
-    gate: 'B18',
-    status: 'Delayed',
-    terminal: 'A'
-  },
-  {
-    flightNumber: 'LX 180',
-    destination: 'Paris CDG',
-    scheduledTime: '2024-12-07T12:30:00+01:00',
-    estimatedTime: '2024-12-07T12:30:00+01:00',
-    gate: 'D45',
-    status: 'Boarding',
-    terminal: 'E'
-  }
+  
 ];
 
 let users = {}; // Store users by Discord ID
